@@ -86,6 +86,21 @@ CONST = {
         os_getenv("CAPTCHABOT_CAPTCHAS_DIR",
                   SETTINGS["CAPTCHABOT_CAPTCHAS_DIR"]),
 
+    # Directory where create/generate temporary poll questions
+    "POLLS_DIR":
+        os_getenv("CAPTCHABOT_POLLS_DIR",
+                  SETTINGS["CAPTCHABOT_POLLS_DIR"]),
+
+    # Directory where fonts are stored
+    "FONTS_DIR":
+        os_getenv("CAPTCHABOT_FONTS_DIR",
+                  SETTINGS["CAPTCHABOT_FONTS_DIR"]),
+
+    # Default font filename
+    "DEFAULT_FONT":
+        os_getenv("CAPTCHABOT_DEFAULT_FONT",
+                  SETTINGS["CAPTCHABOT_DEFAULT_FONT"]),
+
     # Global allowed users file path (i.e. to allow blind users)
     "F_ALLOWED_USERS":
         os_getenv("CAPTCHABOT_F_ALLOWED_USERS",
@@ -132,6 +147,21 @@ CONST = {
         os_getenv("CAPTCHABOT_INIT_CAPTCHA_CHARS_MODE",
                   SETTINGS["CAPTCHABOT_INIT_CAPTCHA_CHARS_MODE"]),
 
+    # Initial captcha poll question
+    "INIT_CAPTCHA_POLL_QUESTION":
+        os_getenv("CAPTCHABOT_INIT_CAPTCHA_POLL_QUESTION",
+                  SETTINGS["CAPTCHABOT_INIT_CAPTCHA_POLL_QUESTION"]),
+
+    # Initial zec price threshold
+    "INIT_ZEC_PRICE_THRESHOLD":
+        os_getenv("CAPTCHABOT_INIT_ZEC_PRICE_THRESHOLD",
+                  SETTINGS["CAPTCHABOT_INIT_ZEC_PRICE_THRESHOLD"]),
+
+    # Initial image use random lines
+    "INIT_USE_RANDOM_LINES":
+        os_getenv("CAPTCHABOT_INIT_USE_RANDOM_LINES",
+                  SETTINGS["CAPTCHABOT_INIT_USE_RANDOM_LINES"]),
+                  
     # Maximum configurable captcha time
     "MAX_CONFIG_CAPTCHA_TIME":
         int(os_getenv("CAPTCHABOT_MAX_CONFIG_CAPTCHA_TIME",
@@ -380,6 +410,11 @@ CMD = {
     "ALLOWUSERLIST": {"KEY": "allowuserlist"},
     "ALLOWGROUP": {"KEY": "allowgroup"},
 
+    "GENERATEIMAGE": { "KEY": "genimg"},    
+    "SETPOLLQUESTION": { "KEY": "pollquestion"},
+    "SETPPRICETHRESHOLD": { "KEY": "pricethreshold"},
+    "TOGGLERANDOMLINES": { "KEY": "togglelines"},
+
     "TIME": {
         "KEY": "time",
         "ARGV": ["m", "min", "mins", "minutes", "s", "sec", "secs",
@@ -388,7 +423,7 @@ CMD = {
 
     "CAPTCHA_MODE": {
         "KEY": "captcha_mode",
-        "ARGV": ["poll", "button", "nums", "hex", "ascii", "math",
+        "ARGV": ["poll_zec_price", "poll", "button", "nums", "hex", "ascii", "math",
                  "random"]
     },
 

@@ -39,7 +39,7 @@ from json import dumps as json_dumps
 from os import path, remove, makedirs, listdir
 
 # Random Library
-from random import choice, randint
+from random import choice, randint, uniform, shuffle
 
 # Regular Expressions Library
 import re
@@ -124,6 +124,18 @@ from constants import (
 # Thread-Safe JSON Library
 from tsjson import TSjson
 
+# Coingecko Libray
+from cgutils import (
+    cg_init, cg_ping, cg_get_zec_price
+)
+
+# Pillow image generation Libray
+from pilutils import (
+    pil_gen_image_from_text
+)
+
+# Other imports
+import spintax
 
 ###############################################################################
 # Logger Setup
@@ -189,6 +201,9 @@ def get_default_config_data():
         ("Poll_Q", ""),
         ("Poll_A", []),
         ("Poll_C_A", 0),
+        ("Poll_Question", CONST["INIT_CAPTCHA_POLL_QUESTION"]),
+        ("Zec_Price_Threshold", CONST["INIT_ZEC_PRICE_THRESHOLD"]),
+        ("Use_Random_Lines", CONST["INIT_USE_RANDOM_LINES"]),
         ("Welcome_Msg", "-"),
         ("Welcome_Time", CONST["T_DEL_WELCOME_MSG"]),
         ("Ignore_List", [])
@@ -715,7 +730,7 @@ async def should_manage_captcha(update, bot):
     if await tlg_user_is_admin(bot, chat.id, member_added_by.id):
         logger.info("[%d] User has been added by an admin.", chat.id)
         logger.info("Skipping the captcha process.")
-        return False
+        return False # Should False in production
     # Ignore if the member that has been join the group is a Bot
     if join_user.is_bot:
         logger.info("[%d] User is a Bot.", chat.id)
@@ -1074,6 +1089,14 @@ async def chat_member_status_change(
         timeout_str = f'{int(captcha_timeout / CONST["T_SECONDS_IN_MIN"])} min'
     send_problem = False
     captcha_num = ""
+    
+    zec_price = 0
+    if captcha_mode == "poll_zec_price":
+        zec_price = cg_get_zec_price()
+        # If Captcha mode is poll_zec_price, but couldn't get ZEC price, use another mode
+        if zec_price == -1:
+            captcha_mode = "random"
+
     if captcha_mode == "random":
         captcha_mode = choice(["nums", "math", "poll"])
         # If Captcha Mode Poll is not configured use another mode
@@ -1133,6 +1156,82 @@ async def chat_member_status_change(
         if sent_result["msg"] is None:
             send_problem = True
         else:
+            # Save some info about the poll the bot_data for
+            # later use in receive_quiz_answer
+            poll_id = sent_result["msg"].poll.id
+            poll_msg_id = sent_result["msg"].message_id
+            poll_data = {
+                poll_id:
+                {
+                    "chat_id": chat_id,
+                    "poll_msg_id": poll_msg_id,
+                    "user_id": join_user_id,
+                    "correct_option": poll_correct_option
+                }
+            }
+            context.bot_data.update(poll_data)
+
+    elif captcha_mode == "poll_zec_price":
+        zec_price_usd = f"${zec_price}"
+        poll_question = get_chat_config(chat_id, "Poll_Question")
+        
+        use_lines = get_chat_config(chat_id, "Use_Random_Lines")
+
+        poll_question_spin = spintax.spin(poll_question)
+        poll_options = [zec_price_usd]        
+        threshold = get_chat_config(chat_id, "Zec_Price_Threshold") # How far in dollars the fake prices should be from to the actual price
+        min_fake_price = zec_price - threshold * 1.5
+        max_fake_price = zec_price + threshold * 1.5
+       
+        # Generate fake prices for the poll
+        while len(poll_options) < 4:
+            fake_price = round(uniform(min_fake_price, max_fake_price), 2)
+            if (fake_price < (zec_price - threshold) or fake_price > (zec_price + threshold)):
+                poll_options.append(f"${fake_price}")
+        
+        shuffle(poll_options)
+        poll_correct_option = poll_options.index(zec_price_usd) + 1 
+
+        # Send request to solve the poll text message
+        poll_request_msg_text = TEXT[lang]["POLL_NEW_USER"].format(
+                join_user_name, chat_title, timeout_str)
+        sent_result = await tlg_send_autodelete_msg(
+                bot, chat_id, poll_request_msg_text, captcha_timeout)
+        solve_poll_request_msg_id = None
+        if sent_result is not None:
+            solve_poll_request_msg_id = sent_result
+
+        # Send the image with poll question
+        img_sent_result = {}
+        img_sent_result["msg"] = None
+        poll_img_question = pil_gen_image_from_text(poll_question_spin, random_lines=use_lines)
+
+        try:
+            with open(poll_img_question, "rb") as file_image:
+                img_sent_result = await tlg_send_image(
+                        bot, chat_id, file_image, read_timeout=20)
+        except Exception:
+            logger.error(format_exc())
+            logger.error("Fail to send image to Telegram")
+            send_problem = True
+        if img_sent_result["msg"] is None:
+            send_problem = True
+        # Remove sent captcha image file from file system
+        if path.exists(poll_img_question):
+            remove(poll_img_question)
+
+        # Send the Poll
+        sent_result = await tlg_send_poll(
+                bot, chat_id, TEXT[lang]["POLL_ANSWER_IMAGE"], poll_options,
+                poll_correct_option-1, captcha_timeout, False, Poll.QUIZ,
+                read_timeout=20)
+        
+        if sent_result["msg"] is None:
+            send_problem = True
+        else:
+            # Schedule poll image to be auto deleted
+            tlg_autodelete_msg(img_sent_result["msg"], captcha_timeout + 10)
+            
             # Save some info about the poll the bot_data for
             # later use in receive_quiz_answer
             poll_id = sent_result["msg"].poll.id
@@ -2362,7 +2461,7 @@ async def cmd_captcha_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Get and configure chat to provided captcha mode
     new_captcha_mode = args[0].lower()
     if (new_captcha_mode in
-            {"poll", "button", "nums", "hex", "ascii", "math", "random"}):
+            {"poll_zec_price", "poll", "button", "nums", "hex", "ascii", "math", "random"}):
         save_config_property(group_id, "Captcha_Chars_Mode", new_captcha_mode)
         bot_msg = TEXT[lang]["CAPTCHA_MODE_CHANGE"].format(new_captcha_mode)
     else:
@@ -3621,6 +3720,157 @@ async def cmd_allowgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     bot, chat_id, "The group is not in allowed list.",
                     topic_id=topic_id)
 
+async def cmd_gen_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    bot = context.bot
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+
+    poll_q = get_chat_config(chat_id, "Poll_Question")
+    price_t = get_chat_config(chat_id, "Zec_Price_Threshold")
+    use_r = get_chat_config(chat_id, "Use_Random_Lines")
+    print(price_t)
+    txt = spintax.spin(poll_q)
+
+    poll_img_question = pil_gen_image_from_text(txt, random_font_size=False, random_lines=use_r)
+
+    try:
+        with open(poll_img_question, "rb") as file_image:
+            sent_result = await tlg_send_image(
+                 bot, chat_id, file_image, read_timeout=20)
+    except Exception:
+        print("error")
+
+async def cmd_poll_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /pollquestion message handler.
+    '''
+    bot = context.bot
+    args = context.args
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        if user_id not in Global.connections:
+            await tlg_send_msg_type_chat(
+                    bot, chat_type, chat_id,
+                    TEXT[lang]["CMD_NEEDS_CONNECTION"])
+            return
+        group_id = Global.connections[user_id]["group_id"]
+    else:
+        # Remove command message automatically after a while
+        tlg_autodelete_msg(update_msg)
+        # Ignore if not requested by a group Admin
+        is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+        if (is_admin is None) or (is_admin is False):
+            return
+        # Get Group Chat ID and configured language
+        group_id = chat_id
+        lang = get_chat_config(group_id, "Language")
+    # Check if no argument was provided with the command
+    if (args is None) or (len(args) == 0):
+        current_poll_q = get_chat_config(group_id, "Poll_Question")
+        await tlg_send_msg_type_chat(
+                bot, chat_type, chat_id, TEXT[lang]["CAPTCHA_QUESTION_NOT_ARG"].format(current_poll_q),
+                topic_id=tlg_get_msg_topic(update_msg))
+        return
+    # Get and configure captcha poll question to provided text
+    new_poll_question = " ".join(args[0:])
+    logger.info("poll_question: %s", new_poll_question)
+    if (new_poll_question):
+        save_config_property(group_id, "Poll_Question", new_poll_question)
+        bot_msg = TEXT[lang]["CAPTCHA_POLL_QUESTION_CHANGE"].format(new_poll_question)
+    else:
+        bot_msg = TEXT[lang]["CAPTCHA_POLL_QUESTION_INVALID"]
+    await tlg_send_msg_type_chat(
+            bot, chat_type, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+    
+async def cmd_price_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /pricethreshold message handler.
+    '''
+    bot = context.bot
+    args = context.args
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    # Check if no argument was provided with the command
+    if (args is None) or (len(args) == 0):
+        price_threshold = get_chat_config(chat_id, "Zec_Price_Threshold")
+        bot_msg = TEXT[lang]["PRICE_THRESHOLD_INFO"].format(price_threshold)
+    elif (float(args[0]) < 0.05):
+        bot_msg = TEXT[lang]["PRICE_THRESHOLD_INVALID"]
+    else:
+        new_price_threshold = float(args[0])
+        save_config_property(chat_id, "Zec_Price_Threshold", new_price_threshold)
+        bot_msg = TEXT[lang]["PRICE_THRESHOLD_CHANGE"].format(new_price_threshold)
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+    
+async def cmd_toggle_lines(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /togglelines message handler.
+    '''
+    bot = context.bot
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    # Get current state of Use_Random_Lines
+    random_lines = get_chat_config(chat_id, "Use_Random_Lines")
+    if(random_lines):
+        save_config_property(chat_id, "Use_Random_Lines", False)
+        bot_msg = TEXT[lang]["POLL_RANDOM_LINES_DISABLE"]
+    else:
+        bot_msg = TEXT[lang]["POLL_RANDOM_LINES_ENABLE"]
+        save_config_property(chat_id, "Use_Random_Lines", True)
+
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
 
 ###############################################################################
 # Bot automatic delete sent messages coroutine
@@ -3826,6 +4076,12 @@ def tlg_app_setup(token: str) -> Application:
     tlg_add_cmd(app, CMD["CHATID"]["KEY"], cmd_chatid)
     tlg_add_cmd(app, CMD["VERSION"]["KEY"], cmd_version)
     tlg_add_cmd(app, CMD["ABOUT"]["KEY"], cmd_about)
+
+    tlg_add_cmd(app, CMD["GENERATEIMAGE"]["KEY"], cmd_gen_image)   
+    tlg_add_cmd(app, CMD["SETPOLLQUESTION"]["KEY"], cmd_poll_question)
+    tlg_add_cmd(app, CMD["SETPPRICETHRESHOLD"]["KEY"], cmd_price_threshold)
+    tlg_add_cmd(app, CMD["TOGGLERANDOMLINES"]["KEY"], cmd_toggle_lines)
+
     if CONST["BOT_OWNER"] != "XXXXXXXXX":
         tlg_add_cmd(app, CMD["CAPTCHA"]["KEY"], cmd_captcha)
         tlg_add_cmd(app, CMD["ALLOWUSERLIST"]["KEY"], cmd_allowuserlist)
@@ -3989,6 +4245,8 @@ def main(argc, argv):
     tlg_app = tlg_app_setup(CONST["TOKEN"])
     # Launch Bot Application
     tlg_app_run(tlg_app)
+    # Initialize Coingecko API
+    cg_init(logger)
     return 0
 
 

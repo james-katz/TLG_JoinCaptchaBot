@@ -245,6 +245,33 @@
     "POLL_NEW_USER":
         "Hello {}, welcome to {}. Please solve the poll below to prove that you are not a robot. If you don't do this in {}, you will be automatically kicked out of the group.",
 
+    "POLL_ANSWER_IMAGE":
+        "Please answer the question in the CAPTCHA above.",
+    
+    "CAPTCHA_QUESTION_NOT_ARG":
+        "Currently configured poll question:\n{}\nYou can change this question with the command:\n/pollquestion Insert the new question here",
+
+    "CAPTCHA_POLL_QUESTION_CHANGE":
+        "The poll questions was successfully changed to {}",        
+
+    "CAPTCHA_POLL_QUESTION_INVALID":
+        "The text you provided is invalid :(",      
+
+    "PRICE_THRESHOLD_INFO":
+        "The currently configured price threshold is {}.\nYou can change this with the command:\n/pricethreshold <value>\n(The threshold value should be at least 0.05)",      
+
+    "PRICE_THRESHOLD_INVALID":
+        "The provided price threshold is invalid :(",  
+
+    "PRICE_THRESHOLD_CHANGE":
+        "The zec price threshold was successfully changed to {}",          
+
+    "POLL_RANDOM_LINES_ENABLE":
+        "Random lines over the poll question image was enabled.",          
+
+    "POLL_RANDOM_LINES_DISABLE":
+        "Random lines over the poll question image was disabled.",          
+
     "CAPTCHA_POLL_FAIL":
         "Captcha poll fail, {} select a wrong answer. You will be kicked in 10s, please try to join the group again...",
 
