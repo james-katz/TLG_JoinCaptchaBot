@@ -71,10 +71,10 @@ SETTINGS = {
     "CAPTCHABOT_POLLS_DIR": SCRIPT_PATH + "/data/polls",
 
     # Directory where fonts are stored
-    "CAPTCHABOT_FONTS_DIR": SCRIPT_PATH + "/data/fonts",
+    "CAPTCHABOT_FONTS_DIR": SCRIPT_PATH + "/fonts",
 
     # Default font filename
-    "CAPTCHABOT_DEFAULT_FONT": "UbuntuMono-Regular.ttf",
+    "CAPTCHABOT_DEFAULT_FONT": "OpenSans-Medium.ttf",
 
     # Global allowed users file path (i.e. to allow blind users)
     "CAPTCHABOT_F_ALLOWED_USERS": SCRIPT_PATH + "/data/allowedusers.txt",
