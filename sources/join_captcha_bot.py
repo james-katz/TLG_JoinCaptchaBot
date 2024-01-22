@@ -730,7 +730,7 @@ async def should_manage_captcha(update, bot):
     if await tlg_user_is_admin(bot, chat.id, member_added_by.id):
         logger.info("[%d] User has been added by an admin.", chat.id)
         logger.info("Skipping the captcha process.")
-        return False # Should False in production
+        return False # Should be False in production
     # Ignore if the member that has been join the group is a Bot
     if join_user.is_bot:
         logger.info("[%d] User is a Bot.", chat.id)
@@ -4077,7 +4077,7 @@ def tlg_app_setup(token: str) -> Application:
     tlg_add_cmd(app, CMD["VERSION"]["KEY"], cmd_version)
     tlg_add_cmd(app, CMD["ABOUT"]["KEY"], cmd_about)
 
-    tlg_add_cmd(app, CMD["GENERATEIMAGE"]["KEY"], cmd_gen_image)   
+    # tlg_add_cmd(app, CMD["GENERATEIMAGE"]["KEY"], cmd_gen_image)   
     tlg_add_cmd(app, CMD["SETPOLLQUESTION"]["KEY"], cmd_poll_question)
     tlg_add_cmd(app, CMD["SETPPRICETHRESHOLD"]["KEY"], cmd_price_threshold)
     tlg_add_cmd(app, CMD["TOGGLERANDOMLINES"]["KEY"], cmd_toggle_lines)

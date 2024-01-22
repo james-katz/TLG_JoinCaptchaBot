@@ -380,9 +380,9 @@ TEXT: dict = {
 
 # Bot Commands
 CMD = {
-    "START": {"KEY": "start"},
-    "HELP": {"KEY": "help"},
-    "COMMANDS": {"KEY": "commands"},
+    "START": {"KEY": "zstart"},
+    "HELP": {"KEY": "zhelp"},
+    "COMMANDS": {"KEY": "zcommands"},
     "CHECKCFG": {"KEY": "checkcfg"},
     "CONNECT": {"KEY": "connect"},
     "DISCONNECT": {"KEY": "disconnect"},
@@ -401,8 +401,8 @@ CMD = {
     "REMOVE_ALL_MSG_KICK_OFF": {"KEY": "remove_all_msg_kick_off"},
     "URL_ENABLE": {"KEY": "url_enable"},
     "URL_DISABLE": {"KEY": "url_disable"},
-    "ENABLE": {"KEY": "enable"},
-    "DISABLE": {"KEY": "disable"},
+    "ENABLE": {"KEY": "zenable"},
+    "DISABLE": {"KEY": "zdisable"},
     "CHATID": {"KEY": "chatid"},
     "VERSION": {"KEY": "version"},
     "ABOUT": {"KEY": "about"},
