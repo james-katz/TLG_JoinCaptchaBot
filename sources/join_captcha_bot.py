@@ -730,7 +730,7 @@ async def should_manage_captcha(update, bot):
     if await tlg_user_is_admin(bot, chat.id, member_added_by.id):
         logger.info("[%d] User has been added by an admin.", chat.id)
         logger.info("Skipping the captcha process.")
-        return False # Should be False in production
+        return True # Should be False in production
     # Ignore if the member that has been join the group is a Bot
     if join_user.is_bot:
         logger.info("[%d] User is a Bot.", chat.id)
@@ -1214,8 +1214,12 @@ async def chat_member_status_change(
             logger.error(format_exc())
             logger.error("Fail to send image to Telegram")
             send_problem = True
+
+        img_poll_send_id = None
         if img_sent_result["msg"] is None:
             send_problem = True
+        else:
+            img_poll_send_id = img_sent_result
         # Remove sent captcha image file from file system
         if path.exists(poll_img_question):
             remove(poll_img_question)
@@ -1230,7 +1234,7 @@ async def chat_member_status_change(
             send_problem = True
         else:
             # Schedule poll image to be auto deleted
-            tlg_autodelete_msg(img_sent_result["msg"], captcha_timeout + 10)
+            # tlg_autodelete_msg(img_sent_result["msg"], captcha_timeout + 10)
             
             # Save some info about the poll the bot_data for
             # later use in receive_quiz_answer
@@ -1336,7 +1340,10 @@ async def chat_member_status_change(
         if sent_result["msg"]:
             Global.new_users[chat_id][join_user_id]["msg_to_rm"].append(
                     sent_result["msg"].message_id)
-        if ((captcha_mode == "poll") and
+        if img_poll_send_id["msg"]:
+            Global.new_users[chat_id][join_user_id]["msg_to_rm"].append(
+                    img_poll_send_id["msg"].message_id)
+        if ((captcha_mode == "poll" or captcha_mode == "poll_zec_price") and
                 (solve_poll_request_msg_id is not None)):
             Global.new_users[chat_id][join_user_id]["msg_to_rm"].append(
                     solve_poll_request_msg_id)
@@ -1789,11 +1796,11 @@ async def poll_answer_rx(
     else:
         # Notify captcha fail
         logger.info("[%s] User %s fail poll.", chat_id, user_name)
-        restriction = get_chat_config(chat_id, "Fail_Restriction")
-        if restriction == CMD["RESTRICTION"]["KICK"]:
-            bot_msg = TEXT[lang]["CAPTCHA_POLL_FAIL"].format(user_name)
-            await bot_send_msg(bot, chat_id, bot_msg, rm_result_msg)
-            await asyncio_sleep(10)
+        # restriction = get_chat_config(chat_id, "Fail_Restriction")
+        # if restriction == CMD["RESTRICTION"]["KICK"]:
+        #     bot_msg = TEXT[lang]["CAPTCHA_POLL_FAIL"].format(user_name)
+        #     await bot_send_msg(bot, chat_id, bot_msg, rm_result_msg)
+        #     await asyncio_sleep(10)
         # Try to punish the user
         await captcha_fail_member(bot, chat_id, user_id)
     logger.info("[%s] Poll captcha process completed.", chat_id)
