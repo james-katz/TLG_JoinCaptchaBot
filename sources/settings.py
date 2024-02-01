@@ -37,7 +37,7 @@ SETTINGS = {
 
     # Bot Token (get it from @BotFather)
     # "CAPTCHABOT_TOKEN": "XXXXXXXXX:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-    "CAPTCHABOT_TOKEN": "6145273284:AAE_86rBMcyEyoiyf81j8VLOhzomOYxNcSM",
+    
     # Bot Owner (i.e. "@JoseTLG" or "123456789")
     "CAPTCHABOT_OWNER": "XXXXXXXXX",
 

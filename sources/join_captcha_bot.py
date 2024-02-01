@@ -730,7 +730,7 @@ async def should_manage_captcha(update, bot):
     if await tlg_user_is_admin(bot, chat.id, member_added_by.id):
         logger.info("[%d] User has been added by an admin.", chat.id)
         logger.info("Skipping the captcha process.")
-        return True # Should be False in production
+        return False # Should be False in production
     # Ignore if the member that has been join the group is a Bot
     if join_user.is_bot:
         logger.info("[%d] User is a Bot.", chat.id)
