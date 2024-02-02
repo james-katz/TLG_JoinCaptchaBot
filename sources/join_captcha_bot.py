@@ -1604,6 +1604,11 @@ async def text_msg_rx(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info("[%s] Removing spam message: %s.", chat_id, msg_text)
         # Try to remove the message and notify detection
         delete_result = await tlg_delete_msg(bot, chat_id, msg_id)
+        # Also try to kick the spammer instantly
+        # Remove join messages first
+        for msg in Global.new_users[chat_id][user_id]["msg_to_rm"]:
+            await tlg_delete_msg(bot, chat_id, msg)
+        await captcha_fail_member(bot, chat_id, user_id)
         if delete_result["error"] == "":
             bot_msg = TEXT[lang]["SPAM_DETECTED_RM"].format(user_name)
             await tlg_send_autodelete_msg(
