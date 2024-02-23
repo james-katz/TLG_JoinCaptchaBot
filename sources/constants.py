@@ -122,6 +122,26 @@ CONST = {
         bool(int(os_getenv("CAPTCHABOT_INIT_ENABLE",
                            SETTINGS["CAPTCHABOT_INIT_ENABLE"]))),
 
+    # Initial enable/disable antiraid at Bot start
+    "INIT_ANTIRAID_ENABLE":
+        bool(int(os_getenv("CAPTCHABOT_INIT_ANTIRAID_ENABLE",
+                           SETTINGS["CAPTCHABOT_INIT_ANTIRAID_ENABLE"]))),
+
+    # Initial enable/disable auto antiraid at Bot start
+    "INIT_ANTIRAID_AUTO_ENABLE":
+        bool(int(os_getenv("CAPTCHABOT_INIT_ANTIRAID_AUTO_ENABLE",
+                           SETTINGS["CAPTCHABOT_INIT_ANTIRAID_AUTO_ENABLE"]))),
+
+    # Initial antiraid duration at Bot start
+    "INIT_ANTIRAID_DURATION":
+        int(os_getenv("ANTIRAID_INIT_DURATION",
+                           SETTINGS["ANTIRAID_INIT_DURATION"])),
+
+    # Initial antiraid trigger (joins per minute) at Bot start
+    "INIT_ANTIRAID_AUTO_TRIGGER":
+        int(os_getenv("ANTIRAID_INIT_AUTO_TRIGGER",
+                           SETTINGS["ANTIRAID_INIT_AUTO_TRIGGER"])),
+
     # Initial users send URLs enable/disable at Bot start
     "INIT_URL_ENABLE":
         bool(int(os_getenv("CAPTCHABOT_INIT_URL_ENABLE",
@@ -403,6 +423,13 @@ CMD = {
     "URL_DISABLE": {"KEY": "url_disable"},
     "ENABLE": {"KEY": "zenable"},
     "DISABLE": {"KEY": "zdisable"},
+    "ANTIRAID_STATUS": {"KEY": "antiraid_status"},
+    "ANTIRAID_ENABLE": {"KEY": "antiraid_enable"},
+    "ANTIRAID_DISABLE": {"KEY": "antiraid_disable"},
+    "ANTIRAID_AUTOENABLE": {"KEY": "antiraid_auto_enable"},
+    "ANTIRAID_AUTODISABLE": {"KEY": "antiraid_auto_disable"},
+    "ANTIRAID_CONFIG_DURATION": {"KEY": "antiraid_config_duration"},
+    "ANTIRAID_CONFIG_TRIGGER": {"KEY": "antiraid_config_auto_trigger"},
     "CHATID": {"KEY": "chatid"},
     "VERSION": {"KEY": "version"},
     "ABOUT": {"KEY": "about"},

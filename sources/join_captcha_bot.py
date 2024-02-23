@@ -28,6 +28,7 @@ import logging
 # Asynchronous Input-Output Concurrency Library
 from asyncio import create_task as asyncio_create_task
 from asyncio import sleep as asyncio_sleep
+from asyncio import get_event_loop as asyncio_get_event_loop
 
 # Collections Data Types Library
 from collections import OrderedDict
@@ -53,6 +54,8 @@ from sys import exit as sys_exit
 
 # Time Library
 from time import time
+from datetime import datetime
+
 
 # Error Traceback Library
 from traceback import format_exc
@@ -163,6 +166,8 @@ class Globals():
     async_captcha_timeout: Optional[CoroutineType] = None
     async_auto_delete_messages: Optional[CoroutineType] = None
     force_exit: bool = False
+    
+
 
 
 ###############################################################################
@@ -175,6 +180,7 @@ Global = Globals()
 # Create Captcha Generator object of specified size (2 -> 640x360)
 CaptchaGen = CaptchaGenerator(2)
 
+loop = asyncio_get_event_loop()
 
 ###############################################################################
 # JSON Chat Config File Functions
@@ -206,7 +212,11 @@ def get_default_config_data():
         ("Use_Random_Lines", CONST["INIT_USE_RANDOM_LINES"]),
         ("Welcome_Msg", "-"),
         ("Welcome_Time", CONST["T_DEL_WELCOME_MSG"]),
-        ("Ignore_List", [])
+        ("Ignore_List", []),
+        ("Antiraid_Enable", CONST["INIT_ANTIRAID_ENABLE"]),
+        ("Antiraid_Auto_Enable", CONST["INIT_ANTIRAID_AUTO_ENABLE"]),
+        ("Antiraid_Auto_Duration", CONST["INIT_ANTIRAID_DURATION"]),
+        ("Antiraid_Auto_Trigger", CONST["INIT_ANTIRAID_AUTO_TRIGGER"])
     ])
     # Feed Captcha Poll Options with empty answers for expected max num
     for _ in range(0, CONST["MAX_POLL_OPTIONS"]):
@@ -909,6 +919,47 @@ async def captcha_fail_member_kick(bot, chat_id, user_id, user_name):
                 chat_id, user_name, user_id)
 
 
+
+async def antiraid_member_kick(bot, chat_id, user_id, user_name):
+    '''
+    Kick user from the group.
+    '''
+    # Get parameters
+    lang = get_chat_config(chat_id, "Language")
+    rm_result_msg = get_chat_config(chat_id, "Rm_Result_Msg")
+    
+    # Kick user 
+    if True:
+        logger.info("[%s] Kick new user - %s (%s)",
+                    chat_id, user_name, user_id)
+        # Try to kick the user
+        kick_result = await tlg_kick_user(bot, chat_id, user_id)
+        if kick_result["error"] == "":
+            # Kick success
+            msg_text = TEXT[lang]["ANTIRAID_KICK"].format(user_name)
+            await bot_send_msg(bot, chat_id, msg_text, rm_result_msg)
+        else:
+            # Kick fail
+            logger.info("[%s] Unable to kick", chat_id)
+            if ((kick_result["error"] == "The user has left the group") or
+                    (kick_result["error"] == "The user was already kicked")):
+                # The user is not in the chat
+                msg_text = TEXT[lang]["NEW_USER_KICK_NOT_IN_CHAT"].format(
+                        user_name)
+                await bot_send_msg(bot, chat_id, msg_text, rm_result_msg)
+            elif kick_result["error"] == \
+                    "Not enough rights to restrict/unrestrict chat member":
+                # Bot has no privileges to kick
+                msg_text = TEXT[lang]["NEW_USER_KICK_NOT_RIGHTS"].format(
+                        user_name)
+                # Send no rights for kick message without auto-remove
+                await bot_send_msg(bot, chat_id, msg_text, False)
+            else:
+                # For other reason, the Bot can't ban
+                msg_text = TEXT[lang]["BOT_CANT_KICK"].format(user_name)
+                await bot_send_msg(bot, chat_id, msg_text, rm_result_msg)
+    
+
 async def captcha_fail_member(bot, chat_id, user_id):
     '''
     Restrict (Kick, Ban, mute, etc) a new member that has fail to solve
@@ -1078,6 +1129,14 @@ async def chat_member_status_change(
     if not captcha_enable:
         logger.info("[%s] Captcha is not enabled in this chat", chat_id)
         return
+
+    # Check if antiraid is on
+    antiraid_enable = get_chat_config(chat_id, "Antiraid_Enable")
+    if antiraid_enable:
+        logger.info("[%s] Antiraid enabled, kicking new user: %s", chat_id, join_user_name)
+        await antiraid_member_kick(bot, chat_id, join_user_id, join_user_name)
+        return
+
     # Determine configured language and captcha settings
     lang = get_chat_config(chat_id, "Language")
     captcha_level = get_chat_config(chat_id, "Captcha_Difficulty_Level")
@@ -1350,11 +1409,38 @@ async def chat_member_status_change(
         # Restrict user to deny send any kind of message until captcha
         # is solve. Allow send text messages for image based captchas
         # that requires it
-        if captcha_mode in ["poll", "button"]:
+        if captcha_mode in ["poll", "poll_zec_price", "button"]:
             await restrict_user_mute(bot, chat_id, join_user_id)
         else:  # Restrict user to only allow send text messages
             await restrict_user_media(bot, chat_id, join_user_id)
         logger.info("[%s] Captcha send process completed.", chat_id)
+
+        # Detect if group is under raid flood
+        antiraid_auto_enable = get_chat_config(chat_id, "Antiraid_Auto_Enable")
+        if (antiraid_auto_enable):
+            antiraid_auto_trigger = get_chat_config(chat_id, "Antiraid_Auto_Trigger")
+            join_times = [datetime.fromtimestamp(user['join_data']['join_time']) for user in Global.new_users[chat_id].values()]
+            try:
+                total_minutes = 1 + (max(join_times) - min(join_times)).total_seconds() / 60
+                total_joins = len(Global.new_users[chat_id])
+                average_joins_per_minute = total_joins / total_minutes
+                logger.info("[%s] Antiraid average joins per minute: %s", chat_id, average_joins_per_minute)
+                if (average_joins_per_minute >= antiraid_auto_trigger):
+                    # Enable anti raid protection
+                    save_config_property(chat_id, "Antiraid_Enable", True)
+                    # Schedule anti raid protection to be disabled
+                    antiraid_duration = get_chat_config(chat_id, "Antiraid_Auto_Duration")                    
+                    loop.call_later(antiraid_duration*60, lambda: asyncio_create_task(disable_raid_protection(bot, chat_id)))
+                    if not loop.is_running():
+                        loop.run_forever()
+
+                    logger.info("[%s] Auto antiraid protection enabled, will auto disable in %s minutes", chat_id, antiraid_duration)
+                    bot_msg = TEXT[lang]["ANTIRAID_MANUAL_ENABLE"]    
+
+                    await tlg_send_autodelete_msg(
+                          bot, chat_id, bot_msg)
+            except:
+                logger.info("[%s] Failed to evaluate joins per minute.", chat_id)
 
 
 async def user_joined_group_msg_rx(
@@ -3883,6 +3969,271 @@ async def cmd_toggle_lines(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await tlg_send_autodelete_msg(
             bot, chat_id, bot_msg,
             topic_id=tlg_get_msg_topic(update_msg))
+    
+async def cmd_antiraid_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /antiraid_status message handler.
+    '''
+    bot = context.bot
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    
+    # Get antiraid status
+    antiraid_status = get_chat_config(chat_id, "Antiraid_Enable")
+    auto_antiraid_status = get_chat_config(chat_id, "Antiraid_Auto_Enable")
+    antiraid_msg = TEXT[lang]["ANTIRAID_STATUS_ENABLED"] if antiraid_status else TEXT[lang]["ANTIRAID_STATUS_DISABLED"]
+    auto_antiraid_msg = TEXT[lang]["ANTIRAID_AUTO_STATUS_ENABLED"] if auto_antiraid_status else TEXT[lang]["ANTIRAID_AUTO_STATUS_DISABLED"]
+    bot_msg = f"{antiraid_msg}\n{auto_antiraid_msg}"
+
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+
+async def cmd_antiraid_enable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /antiraid_enable message handler.
+    '''
+    bot = context.bot
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    
+    # Manually enable antiraid
+    save_config_property(chat_id, "Antiraid_Enable", True)
+    bot_msg = TEXT[lang]["ANTIRAID_MANUAL_ENABLE"]    
+
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+    
+async def cmd_antiraid_disable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /antiraid_disable message handler.
+    '''
+    bot = context.bot
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    
+    # Manually disable antiraid
+    save_config_property(chat_id, "Antiraid_Enable", False)
+    bot_msg = TEXT[lang]["ANTIRAID_MANUAL_DISABLE"]    
+
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+
+async def cmd_antiraid_auto_enable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /antiraid_auto_enable message handler.
+    '''
+    bot = context.bot
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    
+    # Manually enable antiraid auto protection
+    save_config_property(chat_id, "Antiraid_Auto_Enable", True)
+    bot_msg = TEXT[lang]["ANTIRAID_AUTO_ENABLE"]    
+
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+    
+async def cmd_antiraid_auto_disable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /antiraid_auto_disable message handler.
+    '''
+    bot = context.bot
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    
+    # Manually disable antiraid auto protection
+    save_config_property(chat_id, "Antiraid_Auto_Enable", False)
+    bot_msg = TEXT[lang]["ANTIRAID_AUTO_DISABLE"]    
+
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+
+async def cmd_antiraid_config_duration(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /antiraid_config_duration message handler.
+    '''
+    bot = context.bot
+    args = context.args
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    # Check if no argument was provided with the command
+    if (args is None) or (len(args) == 0):
+        antiraid_duration = get_chat_config(chat_id, "Antiraid_Auto_Duration")
+        bot_msg = TEXT[lang]["ANTIRAID_DURATION_INFO"].format(antiraid_duration)
+    elif (int(args[0]) < 1):
+        bot_msg = TEXT[lang]["ANTIRAID_DURATION_INVALID"]
+    else:
+        new_antiraid_duration = int(args[0])
+        save_config_property(chat_id, "Antiraid_Auto_Duration", new_antiraid_duration)
+        bot_msg = TEXT[lang]["ANTIRAID_DURATION_CHANGE"].format(new_antiraid_duration)
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+
+async def cmd_antiraid_config_auto_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /antiraid_config_auto_trigger message handler.
+    '''
+    bot = context.bot
+    args = context.args
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    # Check if no argument was provided with the command
+    if (args is None) or (len(args) == 0):
+        antiraid_auto_trigger = get_chat_config(chat_id, "Antiraid_Auto_Trigger")
+        bot_msg = TEXT[lang]["ANTIRAID_AUTO_TRIGGER_INFO"].format(antiraid_auto_trigger)
+    elif (int(args[0]) < 1):
+        bot_msg = TEXT[lang]["ANTIRAID_AUTO_TRIGGER_INVALID"]
+    else:
+        new_antiraid_auto_trigger = int(args[0])
+        save_config_property(chat_id, "Antiraid_Auto_Trigger", new_antiraid_auto_trigger)
+        bot_msg = TEXT[lang]["ANTIRAID_AUTO_TRIGGER_CHANGE"].format(new_antiraid_auto_trigger)
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+
+async def disable_raid_protection(bot, chat_id):
+    logger.info("[%s] Disabling antiraid protection", chat_id)
+
+    lang = get_chat_config(chat_id, "Language")
+
+    # Automatically disable antiraid
+    save_config_property(chat_id, "Antiraid_Enable", False)
+    bot_msg = TEXT[lang]["ANTIRAID_MANUAL_DISABLE"]    
+
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg)
 
 ###############################################################################
 # Bot automatic delete sent messages coroutine
@@ -4093,6 +4444,15 @@ def tlg_app_setup(token: str) -> Application:
     tlg_add_cmd(app, CMD["SETPOLLQUESTION"]["KEY"], cmd_poll_question)
     tlg_add_cmd(app, CMD["SETPPRICETHRESHOLD"]["KEY"], cmd_price_threshold)
     tlg_add_cmd(app, CMD["TOGGLERANDOMLINES"]["KEY"], cmd_toggle_lines)
+
+    tlg_add_cmd(app, CMD["ANTIRAID_STATUS"]["KEY"], cmd_antiraid_status)
+    tlg_add_cmd(app, CMD["ANTIRAID_ENABLE"]["KEY"], cmd_antiraid_enable)
+    tlg_add_cmd(app, CMD["ANTIRAID_DISABLE"]["KEY"], cmd_antiraid_disable)
+    tlg_add_cmd(app, CMD["ANTIRAID_AUTOENABLE"]["KEY"], cmd_antiraid_auto_enable)
+    tlg_add_cmd(app, CMD["ANTIRAID_AUTODISABLE"]["KEY"], cmd_antiraid_auto_disable)
+    tlg_add_cmd(app, CMD["ANTIRAID_CONFIG_DURATION"]["KEY"], cmd_antiraid_config_duration)
+    tlg_add_cmd(app, CMD["ANTIRAID_CONFIG_TRIGGER"]["KEY"], cmd_antiraid_config_auto_trigger)
+
 
     if CONST["BOT_OWNER"] != "XXXXXXXXX":
         tlg_add_cmd(app, CMD["CAPTCHA"]["KEY"], cmd_captcha)
