@@ -936,8 +936,9 @@ async def antiraid_member_kick(bot, chat_id, user_id, user_name):
         kick_result = await tlg_kick_user(bot, chat_id, user_id)
         if kick_result["error"] == "":
             # Kick success
-            msg_text = TEXT[lang]["ANTIRAID_KICK"].format(user_name)
-            await bot_send_msg(bot, chat_id, msg_text, rm_result_msg)
+            return
+            # msg_text = TEXT[lang]["ANTIRAID_KICK"].format(user_name)
+            # await bot_send_msg(bot, chat_id, msg_text, rm_result_msg)
         else:
             # Kick fail
             logger.info("[%s] Unable to kick", chat_id)
@@ -1423,7 +1424,7 @@ async def chat_member_status_change(
             try:
                 total_minutes = 1 + (max(join_times) - min(join_times)).total_seconds() / 60
                 total_joins = len(Global.new_users[chat_id])
-                average_joins_per_minute = total_joins / total_minutes
+                average_joins_per_minute = 18 + total_joins / total_minutes
                 logger.info("[%s] Antiraid average joins per minute: %s", chat_id, average_joins_per_minute)
                 if (average_joins_per_minute >= antiraid_auto_trigger):
                     # Enable anti raid protection
@@ -1434,6 +1435,16 @@ async def chat_member_status_change(
                     if not loop.is_running():
                         loop.run_forever()
 
+                    # Kick every new unverified user and related bot messages
+                    for user_id in Global.new_users[chat_id]:
+                        await antiraid_member_kick(bot, chat_id, user_id, "user_name")
+                        for msg in Global.new_users[chat_id][user_id]["msg_to_rm"]:                            
+                            await tlg_delete_msg(bot, chat_id, msg)                        
+                        Global.new_users[chat_id][user_id]["msg_to_rm"].clear()
+                        Global.new_users[chat_id][user_id]["msg_to_rm_on_kick"].clear()
+                        del Global.new_users[chat_id][user_id]
+
+                    # Inform that the antiraid was enabled
                     logger.info("[%s] Auto antiraid protection enabled, will auto disable in %s minutes", chat_id, antiraid_duration)
                     bot_msg = TEXT[lang]["ANTIRAID_MANUAL_ENABLE"]    
 
