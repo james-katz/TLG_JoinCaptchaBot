@@ -36,7 +36,7 @@ SETTINGS = {
     "CAPTCHABOT_PRIVATE": False,
 
     # Bot Token (get it from @BotFather)
-    "CAPTCHABOT_TOKEN": "XXXXXXXXX:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "CAPTCHABOT_TOKEN": "XXXXXXXXX:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",        
     
     # Bot Owner (i.e. "@JoseTLG" or "123456789")
     "CAPTCHABOT_OWNER": "XXXXXXXXX",
@@ -103,6 +103,9 @@ SETTINGS = {
 
     # Initial antiraid auto-trigger (joins per minute) at Bot start
     "ANTIRAID_INIT_AUTO_TRIGGER": 12,
+
+    # Initial antiraid auto-trigger (joins per minute) at Bot start
+    "ANTIRAID_INIT_REMOVE_JOINS": True,
 
     # Initial users send URLs enable/disable at Bot start
     "CAPTCHABOT_INIT_URL_ENABLE": True,

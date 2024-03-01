@@ -142,6 +142,11 @@ CONST = {
         int(os_getenv("ANTIRAID_INIT_AUTO_TRIGGER",
                            SETTINGS["ANTIRAID_INIT_AUTO_TRIGGER"])),
 
+    # Initial antiraid config for removing joins prior to activation
+    "INIT_ANTIRAID_REMOVE_JOINS":
+        bool(os_getenv("ANTIRAID_INIT_REMOVE_JOINS",
+                           SETTINGS["ANTIRAID_INIT_REMOVE_JOINS"])),
+
     # Initial users send URLs enable/disable at Bot start
     "INIT_URL_ENABLE":
         bool(int(os_getenv("CAPTCHABOT_INIT_URL_ENABLE",
@@ -430,6 +435,8 @@ CMD = {
     "ANTIRAID_AUTODISABLE": {"KEY": "antiraid_auto_disable"},
     "ANTIRAID_CONFIG_DURATION": {"KEY": "antiraid_config_duration"},
     "ANTIRAID_CONFIG_TRIGGER": {"KEY": "antiraid_config_auto_trigger"},
+    "ANTIRAID_REMOVE_JOINS_ENABLE": {"KEY": "antiraid_remove_joins_enable"},
+    "ANTIRAID_REMOVE_JOINS_DISABLE": {"KEY": "antiraid_remove_joins_disable"},
     "CHATID": {"KEY": "chatid"},
     "VERSION": {"KEY": "version"},
     "ABOUT": {"KEY": "about"},

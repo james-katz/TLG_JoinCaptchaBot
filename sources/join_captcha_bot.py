@@ -216,7 +216,8 @@ def get_default_config_data():
         ("Antiraid_Enable", CONST["INIT_ANTIRAID_ENABLE"]),
         ("Antiraid_Auto_Enable", CONST["INIT_ANTIRAID_AUTO_ENABLE"]),
         ("Antiraid_Auto_Duration", CONST["INIT_ANTIRAID_DURATION"]),
-        ("Antiraid_Auto_Trigger", CONST["INIT_ANTIRAID_AUTO_TRIGGER"])
+        ("Antiraid_Auto_Trigger", CONST["INIT_ANTIRAID_AUTO_TRIGGER"]),
+        ("Antiraid_Remove_Joins", CONST["INIT_ANTIRAID_REMOVE_JOINS"])
     ])
     # Feed Captcha Poll Options with empty answers for expected max num
     for _ in range(0, CONST["MAX_POLL_OPTIONS"]):
@@ -1422,9 +1423,9 @@ async def chat_member_status_change(
             antiraid_auto_trigger = get_chat_config(chat_id, "Antiraid_Auto_Trigger")
             join_times = [datetime.fromtimestamp(user['join_data']['join_time']) for user in Global.new_users[chat_id].values()]
             try:
-                total_minutes = 1 + (max(join_times) - min(join_times)).total_seconds() / 60
+                total_minutes = (max(join_times) - min(join_times)).total_seconds() / 60
                 total_joins = len(Global.new_users[chat_id])
-                average_joins_per_minute = 18 + total_joins / total_minutes
+                average_joins_per_minute = total_joins / (total_minutes + 1)
                 logger.info("[%s] Antiraid average joins per minute: %s", chat_id, average_joins_per_minute)
                 if (average_joins_per_minute >= antiraid_auto_trigger):
                     # Enable anti raid protection
@@ -1435,21 +1436,23 @@ async def chat_member_status_change(
                     if not loop.is_running():
                         loop.run_forever()
 
-                    # Kick every new unverified user and related bot messages
-                    for user_id in Global.new_users[chat_id]:
-                        await antiraid_member_kick(bot, chat_id, user_id, "user_name")
-                        for msg in Global.new_users[chat_id][user_id]["msg_to_rm"]:                            
-                            await tlg_delete_msg(bot, chat_id, msg)                        
-                        Global.new_users[chat_id][user_id]["msg_to_rm"].clear()
-                        Global.new_users[chat_id][user_id]["msg_to_rm_on_kick"].clear()
-                        del Global.new_users[chat_id][user_id]
-
                     # Inform that the antiraid was enabled
                     logger.info("[%s] Auto antiraid protection enabled, will auto disable in %s minutes", chat_id, antiraid_duration)
-                    bot_msg = TEXT[lang]["ANTIRAID_MANUAL_ENABLE"]    
-
+                    bot_msg = TEXT[lang]["ANTIRAID_AUTO_PROTECTION_ENABLE"].format(antiraid_duration)   
+                    
                     await tlg_send_autodelete_msg(
                           bot, chat_id, bot_msg)
+
+                    # Kick every new unverified user and related bot messages
+                    remove_prev_joins = get_chat_config(chat_id, "Antiraid_Remove_Joins")
+                    if (remove_prev_joins):
+                        for user_id in Global.new_users[chat_id]:
+                            await antiraid_member_kick(bot, chat_id, user_id, "user_name")
+                            for msg in Global.new_users[chat_id][user_id]["msg_to_rm"]:                            
+                                await tlg_delete_msg(bot, chat_id, msg)                        
+                            Global.new_users[chat_id][user_id]["msg_to_rm"].clear()
+                            Global.new_users[chat_id][user_id]["msg_to_rm_on_kick"].clear()
+                            del Global.new_users[chat_id][user_id]
             except:
                 logger.info("[%s] Failed to evaluate joins per minute.", chat_id)
 
@@ -4010,9 +4013,11 @@ async def cmd_antiraid_status(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Get antiraid status
     antiraid_status = get_chat_config(chat_id, "Antiraid_Enable")
     auto_antiraid_status = get_chat_config(chat_id, "Antiraid_Auto_Enable")
+    antiraid_kick_new = get_chat_config(chat_id, "Antiraid_Remove_Joins")
     antiraid_msg = TEXT[lang]["ANTIRAID_STATUS_ENABLED"] if antiraid_status else TEXT[lang]["ANTIRAID_STATUS_DISABLED"]
     auto_antiraid_msg = TEXT[lang]["ANTIRAID_AUTO_STATUS_ENABLED"] if auto_antiraid_status else TEXT[lang]["ANTIRAID_AUTO_STATUS_DISABLED"]
-    bot_msg = f"{antiraid_msg}\n{auto_antiraid_msg}"
+    antiraid_kick_new_msg = TEXT[lang]["ANTIRAID_KICK_JOINS_ENABLED"] if antiraid_kick_new else TEXT[lang]["ANTIRAID_KICK_JOINS_DISABLED"]
+    bot_msg = f"{antiraid_msg}\n{auto_antiraid_msg}\n{antiraid_kick_new_msg}"
 
     await tlg_send_autodelete_msg(
             bot, chat_id, bot_msg,
@@ -4234,6 +4239,75 @@ async def cmd_antiraid_config_auto_trigger(update: Update, context: ContextTypes
             bot, chat_id, bot_msg,
             topic_id=tlg_get_msg_topic(update_msg))
 
+async def cmd_antiraid_remove_joins_enable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /cmd_antiraid_remove_joins_enable message handler.
+    '''
+    bot = context.bot
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    
+    # Enable kick new unverified users
+    save_config_property(chat_id, "Antiraid_Remove_Joins", True)
+    bot_msg = TEXT[lang]["ANTIRAID_KICK_JOINS_ENABLED"]    
+
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+
+
+async def cmd_antiraid_remove_joins_disable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /cmd_antiraid_remove_joins_disable message handler.
+    '''
+    bot = context.bot
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    
+    # Disable kick new unverified users
+    save_config_property(chat_id, "Antiraid_Remove_Joins", False)
+    bot_msg = TEXT[lang]["ANTIRAID_KICK_JOINS_DISABLED"]    
+
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+
 async def disable_raid_protection(bot, chat_id):
     logger.info("[%s] Disabling antiraid protection", chat_id)
 
@@ -4241,7 +4315,7 @@ async def disable_raid_protection(bot, chat_id):
 
     # Automatically disable antiraid
     save_config_property(chat_id, "Antiraid_Enable", False)
-    bot_msg = TEXT[lang]["ANTIRAID_MANUAL_DISABLE"]    
+    bot_msg = TEXT[lang]["ANTIRAID_AUTO_EXPIRED"]    
 
     await tlg_send_autodelete_msg(
             bot, chat_id, bot_msg)
@@ -4462,8 +4536,9 @@ def tlg_app_setup(token: str) -> Application:
     tlg_add_cmd(app, CMD["ANTIRAID_AUTOENABLE"]["KEY"], cmd_antiraid_auto_enable)
     tlg_add_cmd(app, CMD["ANTIRAID_AUTODISABLE"]["KEY"], cmd_antiraid_auto_disable)
     tlg_add_cmd(app, CMD["ANTIRAID_CONFIG_DURATION"]["KEY"], cmd_antiraid_config_duration)
-    tlg_add_cmd(app, CMD["ANTIRAID_CONFIG_TRIGGER"]["KEY"], cmd_antiraid_config_auto_trigger)
-
+    tlg_add_cmd(app, CMD["ANTIRAID_CONFIG_TRIGGER"]["KEY"], cmd_antiraid_config_auto_trigger)   
+    tlg_add_cmd(app, CMD["ANTIRAID_REMOVE_JOINS_ENABLE"]["KEY"], cmd_antiraid_remove_joins_enable)
+    tlg_add_cmd(app, CMD["ANTIRAID_REMOVE_JOINS_DISABLE"]["KEY"], cmd_antiraid_remove_joins_disable)
 
     if CONST["BOT_OWNER"] != "XXXXXXXXX":
         tlg_add_cmd(app, CMD["CAPTCHA"]["KEY"], cmd_captcha)
