@@ -1245,7 +1245,7 @@ async def chat_member_status_change(
         max_fake_price = zec_price + threshold * 1.5
        
         # Generate fake prices for the poll
-        while len(poll_options) < 4:
+        while len(poll_options) < 6:
             fake_price = round(uniform(min_fake_price, max_fake_price), 2)
             if (fake_price < (zec_price - threshold) or fake_price > (zec_price + threshold)):
                 poll_options.append(f"${fake_price}")
