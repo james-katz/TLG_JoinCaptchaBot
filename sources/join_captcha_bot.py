@@ -110,7 +110,7 @@ from tlgbotutils import (
     tlg_restrict_user, tlg_unrestrict_user, tlg_is_valid_user_id_or_alias,
     tlg_is_valid_group, tlg_alias_in_string, tlg_extract_members_status_change,
     tlg_get_msg, tlg_is_a_channel_msg_on_discussion_group, tlg_get_user_name,
-    tlg_member_has_join_group, tlg_member_has_left_group, tlg_get_msg_topic
+    tlg_member_has_join_group, tlg_member_has_left_group, tlg_get_msg_topic, levenshtein
 )
 
 # Commons Library
@@ -217,7 +217,9 @@ def get_default_config_data():
         ("Antiraid_Auto_Enable", CONST["INIT_ANTIRAID_AUTO_ENABLE"]),
         ("Antiraid_Auto_Duration", CONST["INIT_ANTIRAID_DURATION"]),
         ("Antiraid_Auto_Trigger", CONST["INIT_ANTIRAID_AUTO_TRIGGER"]),
-        ("Antiraid_Remove_Joins", CONST["INIT_ANTIRAID_REMOVE_JOINS"])
+        ("Antiraid_Remove_Joins", CONST["INIT_ANTIRAID_REMOVE_JOINS"]),
+        ("Antiscammer_Enable", CONST["INIT_ANTI_IMPERSONATOR_ENABLE"]),
+
     ])
     # Feed Captcha Poll Options with empty answers for expected max num
     for _ in range(0, CONST["MAX_POLL_OPTIONS"]):
@@ -1092,6 +1094,7 @@ async def chat_member_status_change(
     # Get User ID and Name
     join_user_id = join_user.id
     join_user_name = tlg_get_user_name(join_user, 35)
+
     # Ignore if it is not a new member join
     if not tlg_member_has_join_group(update.chat_member):
         # Remove "TheJoinCaptchaBot removed USER" message
@@ -1139,6 +1142,28 @@ async def chat_member_status_change(
         await antiraid_member_kick(bot, chat_id, join_user_id, join_user_name)
         return
 
+    # Check if new user is impersonating admin
+    antiscammer_enable = get_chat_config(chat_id, "Antiscammer_Enable")
+    if antiscammer_enable:
+        admins = await bot.get_chat_administrators(chat_id)
+        for admin in admins:
+            # full admin name
+            admin_name = f"{admin.user.first_name}"
+            if admin.user.last_name:
+                admin_name += f"{admin.user.last_name}"
+
+            # full new user name
+            new_user_name = f"{join_user.first_name}"
+            if join_user.last_name:
+                new_user_name += f"{join_user.last_name}"
+
+            if (levenshtein(admin_name.lower(), new_user_name.lower()) < 5 and admin.user.id != join_user_id):
+                logger.info("[%s] New user has the same name as an admin, kicking new user: %s", chat_id, join_user_name)
+                await tlg_send_autodelete_msg(
+                    bot, chat_id, "🚨 Warning: A new user joined with a name similar to one of our admins and was removed for security reasons.")
+                await antiraid_member_kick(bot, chat_id, join_user_id, join_user_name)
+                return
+        
     # Determine configured language and captcha settings
     lang = get_chat_config(chat_id, "Language")
     captcha_level = get_chat_config(chat_id, "Captcha_Difficulty_Level")
@@ -1633,9 +1658,12 @@ async def text_msg_rx(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     msg_text = f"{msg_text} [{url}]"
                 break
-    # Get others message data
+    # Get others message data    
     user_id = update_msg.from_user.id
     msg_id = update_msg.message_id
+
+    # Maybe check user name here
+
     # Get and update chat data
     chat_title = chat.title
     if chat_title:
@@ -3539,6 +3567,12 @@ async def cmd_chatid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     chat_id = update_msg.chat_id
     chat_type = update_msg.chat.type
+    user_id = update_msg.from_user.id
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    
     if chat_type == "private":
         msg_text = f"Your Chat ID:\n—————————\n{chat_id}"
         await tlg_send_msg(bot, chat_id, msg_text)
@@ -3562,6 +3596,10 @@ async def cmd_version(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update_msg.chat_id
     chat_type = update_msg.chat.type
     user_id = update_msg.from_user.id
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
     lang = get_update_user_lang(update_msg.from_user)
     if chat_type == "private":
         msg_text = TEXT[lang]["VERSION"].format(CONST["VERSION"])
@@ -3592,6 +3630,11 @@ async def cmd_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     chat_id = update_msg.chat_id
     chat_type = update_msg.chat.type
+    user_id = update_msg.from_user.id
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
     lang = get_update_user_lang(update_msg.from_user)
     if chat_type != "private":
         lang = get_chat_config(chat_id, "Language")
@@ -4320,6 +4363,110 @@ async def disable_raid_protection(bot, chat_id):
     await tlg_send_autodelete_msg(
             bot, chat_id, bot_msg)
 
+async def cmd_antiscammer_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /antiscammer_status message handler.
+    '''
+    bot = context.bot
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    
+    # Get antiscammer status
+    antiscammer_status = get_chat_config(chat_id, "Antiscammer_Enable")
+    antiraid_msg = TEXT[lang]["ADMIN_IMPERSONATOR_STATUS_ENABLED"] if antiscammer_status else TEXT[lang]["ADMIN_IMPERSONATOR_STATUS_DISABLED"]
+    
+    bot_msg = f"{antiraid_msg}"
+
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+
+async def cmd_antiscammer_enable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /antiscammer_enable message handler.
+    '''
+    bot = context.bot
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    
+    # Manually enable antiraid
+    save_config_property(chat_id, "Antiscammer_Enable", True)
+    bot_msg = TEXT[lang]["ADMIN_IMPERSONATOR_STATUS_ENABLED"]    
+
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+
+async def cmd_antiscammer_disable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''
+    Command /antiscammer_disable message handler.
+    '''
+    bot = context.bot
+    # Ignore command if it was a edited message
+    update_msg = getattr(update, "message", None)
+    if update_msg is None:
+        return
+    chat_id = update_msg.chat_id
+    user_id = update_msg.from_user.id
+    chat_type = update_msg.chat.type
+    lang = get_update_user_lang(update_msg.from_user)
+    # Check and deny usage in private chat
+    if chat_type == "private":
+        await tlg_send_msg(bot, chat_id, TEXT[lang]["CMD_NOT_ALLOW_PRIVATE"])
+        return
+    # Remove command message automatically after a while
+    tlg_autodelete_msg(update_msg)
+    # Ignore if not requested by a group Admin
+    is_admin = await tlg_user_is_admin(bot, chat_id, user_id)
+    if (is_admin is None) or (is_admin is False):
+        return
+    # Get actual chat configured language
+    lang = get_chat_config(chat_id, "Language")
+    
+    # Manually enable antiraid
+    save_config_property(chat_id, "Antiscammer_Enable", False)
+    bot_msg = TEXT[lang]["ADMIN_IMPERSONATOR_STATUS_DISABLED"]    
+
+    await tlg_send_autodelete_msg(
+            bot, chat_id, bot_msg,
+            topic_id=tlg_get_msg_topic(update_msg))
+    
 ###############################################################################
 # Bot automatic delete sent messages coroutine
 ###############################################################################
@@ -4539,6 +4686,10 @@ def tlg_app_setup(token: str) -> Application:
     tlg_add_cmd(app, CMD["ANTIRAID_CONFIG_TRIGGER"]["KEY"], cmd_antiraid_config_auto_trigger)   
     tlg_add_cmd(app, CMD["ANTIRAID_REMOVE_JOINS_ENABLE"]["KEY"], cmd_antiraid_remove_joins_enable)
     tlg_add_cmd(app, CMD["ANTIRAID_REMOVE_JOINS_DISABLE"]["KEY"], cmd_antiraid_remove_joins_disable)
+
+    tlg_add_cmd(app, CMD["ADMIN_IMPERSONATOR_STATUS"]["KEY"], cmd_antiscammer_status)
+    tlg_add_cmd(app, CMD["ADMIN_IMPERSONATOR_ENABLE"]["KEY"], cmd_antiscammer_enable)
+    tlg_add_cmd(app, CMD["ADMIN_IMPERSONATOR_DISABLE"]["KEY"], cmd_antiscammer_disable)
 
     if CONST["BOT_OWNER"] != "XXXXXXXXX":
         tlg_add_cmd(app, CMD["CAPTCHA"]["KEY"], cmd_captcha)

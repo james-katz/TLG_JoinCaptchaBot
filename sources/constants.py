@@ -126,7 +126,7 @@ CONST = {
     "INIT_ANTIRAID_ENABLE":
         bool(int(os_getenv("CAPTCHABOT_INIT_ANTIRAID_ENABLE",
                            SETTINGS["CAPTCHABOT_INIT_ANTIRAID_ENABLE"]))),
-
+                  
     # Initial enable/disable auto antiraid at Bot start
     "INIT_ANTIRAID_AUTO_ENABLE":
         bool(int(os_getenv("CAPTCHABOT_INIT_ANTIRAID_AUTO_ENABLE",
@@ -146,6 +146,11 @@ CONST = {
     "INIT_ANTIRAID_REMOVE_JOINS":
         bool(os_getenv("ANTIRAID_INIT_REMOVE_JOINS",
                            SETTINGS["ANTIRAID_INIT_REMOVE_JOINS"])),
+
+    # Initial enable/disable admin impersonator protection at Bot start
+    "INIT_ANTI_IMPERSONATOR_ENABLE":
+        bool(int(os_getenv("CAPTCHABOT_INIT_IMPERSONATOR_ENABLE",
+                           SETTINGS["CAPTCHABOT_INIT_IMPERSONATOR_ENABLE"]))),
 
     # Initial users send URLs enable/disable at Bot start
     "INIT_URL_ENABLE":
@@ -236,6 +241,8 @@ CONST = {
     "MAX_POLL_OPTIONS":
         int(os_getenv("CAPTCHABOT_MAX_POLL_OPTIONS",
                       SETTINGS["CAPTCHABOT_MAX_POLL_OPTIONS"])),
+
+    # Maybe user's name blacklist
 
     # Poll captcha question max length
     "MAX_POLL_QUESTION_LENGTH":
@@ -437,6 +444,11 @@ CMD = {
     "ANTIRAID_CONFIG_TRIGGER": {"KEY": "antiraid_config_auto_trigger"},
     "ANTIRAID_REMOVE_JOINS_ENABLE": {"KEY": "antiraid_remove_joins_enable"},
     "ANTIRAID_REMOVE_JOINS_DISABLE": {"KEY": "antiraid_remove_joins_disable"},
+    
+    "ADMIN_IMPERSONATOR_STATUS": {"KEY": "antiscammer_status"},
+    "ADMIN_IMPERSONATOR_ENABLE": {"KEY": "antiscammer_enable"},
+    "ADMIN_IMPERSONATOR_DISABLE": {"KEY": "antiscammer_disable"},
+
     "CHATID": {"KEY": "chatid"},
     "VERSION": {"KEY": "version"},
     "ABOUT": {"KEY": "about"},

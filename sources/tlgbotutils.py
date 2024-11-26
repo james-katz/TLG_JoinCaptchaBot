@@ -625,6 +625,24 @@ def tlg_get_user_name(user: User, truncate_name_len: int = 0):
     user_name = add_lrm(user_name)
     return user_name
 
+def levenshtein(s1, s2):
+    '''
+        Calculate the levenshtein distance between two strings
+    '''
+    if len(s1) == 0:
+        return len(s2)
+    if len(s2) == 0:
+        return len(s1)
+    
+    if s1[0] == s2[0]:
+        return levenshtein(s1[1:], s2[1:])
+    
+    return 1 + min(
+        levenshtein(s1[1:], s2),    # Deletion
+        levenshtein(s1, s2[1:]),    # Insertion
+        levenshtein(s1[1:], s2[1:]) # Substitution
+    )
+
 
 def tlg_member_has_join_group(chat_member: ChatMemberUpdated):
     '''

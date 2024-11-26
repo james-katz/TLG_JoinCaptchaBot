@@ -36,7 +36,7 @@ SETTINGS = {
     "CAPTCHABOT_PRIVATE": False,
 
     # Bot Token (get it from @BotFather)
-    # "CAPTCHABOT_TOKEN": "XXXXXXXXX:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",        
+    "CAPTCHABOT_TOKEN": "XXXXXXXXX:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",        
     
     # Bot Owner (i.e. "@JoseTLG" or "123456789")
     "CAPTCHABOT_OWNER": "XXXXXXXXX",
@@ -107,6 +107,9 @@ SETTINGS = {
     # Initial antiraid auto-trigger (joins per minute) at Bot start
     "ANTIRAID_INIT_REMOVE_JOINS": True,
 
+    # Initial enable/disable admin impersonator protection at Bot start
+    "CAPTCHABOT_INIT_IMPERSONATOR_ENABLE": False,
+
     # Initial users send URLs enable/disable at Bot start
     "CAPTCHABOT_INIT_URL_ENABLE": True,
 
@@ -143,6 +146,8 @@ SETTINGS = {
 
     # Maximum number of allowed captcha Poll options
     "CAPTCHABOT_MAX_POLL_OPTIONS": 6,
+
+    # Maybe add user's name blacklist here
 
     # Poll captcha question max length
     # Telegram maximum Poll Question length is 300
