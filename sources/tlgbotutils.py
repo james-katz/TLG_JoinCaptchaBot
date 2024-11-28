@@ -59,6 +59,9 @@ from telegram._utils.types import (
     DVInput, FileInput, ODVInput, ReplyMarkup
 )
 
+# Levenshtein (edit) distance, and edit operations
+import Levenshtein
+
 
 ###############################################################################
 # Local Libraries
@@ -629,19 +632,20 @@ def levenshtein(s1, s2):
     '''
         Calculate the levenshtein distance between two strings
     '''
-    if len(s1) == 0:
-        return len(s2)
-    if len(s2) == 0:
-        return len(s1)
+    # if len(s1) == 0:
+    #     return len(s2)
+    # if len(s2) == 0:
+    #     return len(s1)
     
-    if s1[0] == s2[0]:
-        return levenshtein(s1[1:], s2[1:])
+    # if s1[0] == s2[0]:
+    #     return levenshtein(s1[1:], s2[1:])
     
-    return 1 + min(
-        levenshtein(s1[1:], s2),    # Deletion
-        levenshtein(s1, s2[1:]),    # Insertion
-        levenshtein(s1[1:], s2[1:]) # Substitution
-    )
+    # return 1 + min(
+    #     levenshtein(s1[1:], s2),    # Deletion
+    #     levenshtein(s1, s2[1:]),    # Insertion
+    #     levenshtein(s1[1:], s2[1:]) # Substitution
+    # )
+    return Levenshtein.distance(s1, s2)
 
 
 def tlg_member_has_join_group(chat_member: ChatMemberUpdated):

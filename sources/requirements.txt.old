@@ -1,7 +1,5 @@
 multicolorcaptcha==1.2.0
 Pillow==9.0.1
-Pillow==11.0.0
 pycoingecko==3.1.0
-python-telegram-bot==21.7
-python_Levenshtein==0.26.1
+python-telegram-bot==20.7
 spintax==1.0.4
