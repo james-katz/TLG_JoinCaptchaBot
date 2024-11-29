@@ -1157,7 +1157,7 @@ async def chat_member_status_change(
             if join_user.last_name:
                 new_user_name += f"{join_user.last_name}"
 
-            if (levenshtein(admin_name.lower(), new_user_name.lower()) < 5 and admin.user.id != join_user_id):
+            if (levenshtein(admin_name.lower(), new_user_name.lower()) < 4 and admin.user.id != join_user_id):
                 logger.info("[%s] New user has the same name as an admin, kicking new user: %s", chat_id, join_user_name)
                 await tlg_send_autodelete_msg(
                     bot, chat_id, f"🚨 Warning: A new user ({join_user_name}) joined with a name similar to one of our admins ({tlg_get_user_name(admin.user, 35)}) and was removed for security reasons.")
